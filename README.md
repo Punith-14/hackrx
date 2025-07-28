@@ -77,6 +77,7 @@ The application has one main endpoint for processing documents and questions.
     }
     ```
 - **Success Response:**
+    ```
     JSON
     {
     "answers": [
@@ -84,4 +85,5 @@ The application has one main endpoint for processing documents and questions.
         "Answer to your second question. Source: '...'"
     ]
     }
+     ```
 

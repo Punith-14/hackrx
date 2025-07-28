@@ -1,0 +1,24 @@
+# Environment
+# Ignore the virtual environment folder.
+venv/
+.venv/
+
+# Secrets
+# Ignore the file containing API keys and database URLs.
+.env
+
+# Python
+# Ignore Python cache files and compiled files.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / Editor
+# Ignore settings folders from popular editors.
+.vscode/
+.idea/
+
+# Operating System
+# Ignore macOS system files.
+.DS_Store

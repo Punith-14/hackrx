@@ -9,7 +9,6 @@ This system goes beyond a basic RAG implementation and includes several advanced
 -   **Intelligent Document Caching:** Uses a PostgreSQL database to cache processed documents, dramatically improving latency on subsequent requests for the same document.
 -   **Direct Citations:** The LLM is prompted to include the specific source sentence from the document in its answer, providing clear explainability.
 -   **Hybrid Search:** Combines traditional keyword search (BM25) with modern semantic search (Pinecone) to ensure the most relevant context is retrieved.
--   **Context Re-ranking:** Employs a Cross-Encoder model to re-rank the retrieved context, filtering out noise and providing the final LLM with only the most precise information.
 -   **Modular, Singleton-Based Architecture:** Services for embedding, database connections, and LLM calls are managed as singletons for performance and clean code.
 
 ## 🛠️ Tech Stack

@@ -6,8 +6,7 @@ import fitz
 import json
 import hashlib
 from typing import List, Tuple
-# We need the CrossEncoder for re-ranking
-from sentence_transformers import SentenceTransformer, CrossEncoder
+from sentence_transformers import SentenceTransformer
 from pinecone import Pinecone, ServerlessSpec
 from dotenv import load_dotenv
 from groq import Groq
@@ -16,9 +15,7 @@ from app.core.database import SessionLocal, ProcessedDocument
 
 load_dotenv()
 
-# =============================================================================
-# Singleton Classes for Services
-# =============================================================================
+# Singleton Classes (EmbeddingModel, PineconeService, LLMService)
 
 
 class EmbeddingModel:
@@ -27,24 +24,9 @@ class EmbeddingModel:
     @classmethod
     def get_instance(cls):
         if cls._instance is None:
-            print("INFO:     Loading embedding model (SentenceTransformer)...")
+            print("INFO:     Loading embedding model...")
             cls._instance = SentenceTransformer('all-MiniLM-L6-v2')
             print("INFO:     Embedding model loaded.")
-        return cls._instance
-
-
-class RerankerModel:
-    """Singleton for the Cross-Encoder model used for re-ranking."""
-    _instance = None
-
-    @classmethod
-    def get_instance(cls):
-        if cls._instance is None:
-            print("INFO:     Loading re-ranking model (CrossEncoder)...")
-            # This model is small, fast, and highly effective for re-ranking
-            cls._instance = CrossEncoder(
-                'cross-encoder/ms-marco-MiniLM-L-6-v2')
-            print("INFO:     Re-ranking model loaded.")
         return cls._instance
 
 
@@ -91,9 +73,7 @@ class LLMService:
             print("INFO:     Groq client initialized.")
         return cls._instance
 
-# =============================================================================
-# Updated Core Logic with Re-ranking
-# =============================================================================
+# Core Logic Functions
 
 
 def process_document_and_upsert(url: str) -> List[str]:
@@ -136,56 +116,32 @@ def process_document_and_upsert(url: str) -> List[str]:
 
 
 def get_context_for_questions(questions: List[str], url: str, all_chunks: List[str]) -> List[Tuple[str, str]]:
-    """
-    Finds context using hybrid search followed by intelligent re-ranking.
-    """
     doc_id = hashlib.sha256(url.encode()).hexdigest()
     embedding_model = EmbeddingModel.get_instance()
-    reranker = RerankerModel.get_instance()
     index = PineconeService.get_index()
-
     tokenized_corpus = [doc.split(" ") for doc in all_chunks]
     bm25 = BM25Okapi(tokenized_corpus)
 
     qa_contexts = []
     for question in questions:
-        print(
-            f"INFO:     Hybrid search & re-ranking for question: '{question}'")
+        print(f"INFO:     Hybrid search for question: '{question}'")
 
-        # --- 1. Hybrid Search (Retrieve a larger candidate pool) ---
         query_embedding = embedding_model.encode([question]).tolist()
         semantic_results = index.query(
-            vector=query_embedding, top_k=5, include_metadata=True, namespace=doc_id)
+            vector=query_embedding, top_k=3, include_metadata=True, namespace=doc_id)
         semantic_chunks = [res['metadata']['text']
                            for res in semantic_results['matches']]
 
         tokenized_query = question.split(" ")
-        keyword_chunks = bm25.get_top_n(tokenized_query, all_chunks, n=5)
+        keyword_chunks = bm25.get_top_n(tokenized_query, all_chunks, n=3)
 
-        candidate_chunks = list(dict.fromkeys(
-            semantic_chunks + keyword_chunks))
+        combined_chunks = semantic_chunks + keyword_chunks
+        unique_chunks = list(dict.fromkeys(combined_chunks))
 
-        # --- 2. Re-ranking ---
-        # Create pairs of [question, chunk] for the re-ranker
-        rerank_pairs = [[question, chunk] for chunk in candidate_chunks]
-        # Get scores from the powerful CrossEncoder model
-        scores = reranker.predict(rerank_pairs)
-
-        # Combine chunks with their scores and sort
-        scored_chunks = list(zip(candidate_chunks, scores))
-        scored_chunks.sort(key=lambda x: x[1], reverse=True)
-
-        # --- 3. Select the top N re-ranked chunks ---
-        top_k_reranked = 3
-        final_chunks = [chunk for chunk,
-                        score in scored_chunks[:top_k_reranked]]
-
-        context = " ".join(final_chunks)
+        context = " ".join(unique_chunks)
         qa_contexts.append((question, context))
 
     return qa_contexts
-
-# (generate_answers_in_batch and other helpers remain the same)
 
 
 def generate_answers_in_batch(qa_contexts: List[Tuple[str, str]]) -> List[str]:

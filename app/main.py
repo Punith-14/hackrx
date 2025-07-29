@@ -3,7 +3,7 @@
 from fastapi import FastAPI, HTTPException, status
 from app.api.models import QueryRequest, QueryResponse
 from app.core.services import (
-    EmbeddingModel, RerankerModel, PineconeService, LLMService,
+    EmbeddingModel, PineconeService, LLMService,
     process_document_and_upsert, get_context_for_questions, generate_answers_in_batch
 )
 from app.core.database import init_db
@@ -20,7 +20,6 @@ async def startup_event():
     """Load models, initialize services, and create DB tables on startup."""
     init_db()
     EmbeddingModel.get_instance()
-    RerankerModel.get_instance()  # Add the re-ranker to the startup sequence
     PineconeService.get_instance()
     LLMService.get_instance()
 
@@ -38,7 +37,7 @@ async def root():
 )
 async def run_query(request: QueryRequest):
     """
-    Orchestrates the full RAG pipeline with caching, hybrid search, and re-ranking.
+    Orchestrates the full RAG pipeline with caching and hybrid search.
     """
     try:
         all_chunks = process_document_and_upsert(str(request.documents))

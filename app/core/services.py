@@ -15,7 +15,7 @@ from app.core.database import SessionLocal, ProcessedDocument
 
 load_dotenv()
 
-# Singleton Classes (EmbeddingModel, PineconeService, LLMService)
+# (Singleton classes remain the same)
 
 
 class EmbeddingModel:
@@ -73,21 +73,23 @@ class LLMService:
             print("INFO:     Groq client initialized.")
         return cls._instance
 
+# =============================================================================
 # Core Logic Functions
+# =============================================================================
 
 
 def process_document_and_upsert(url: str) -> List[str]:
     doc_id = hashlib.sha256(url.encode()).hexdigest()
     db = SessionLocal()
     try:
-        if db.query(ProcessedDocument).filter(ProcessedDocument.id == doc_id).first():
+        cached_doc = db.query(ProcessedDocument).filter(
+            ProcessedDocument.id == doc_id).first()
+        if cached_doc:
             print(
-                f"INFO:     Cache hit for document URL: {url}. Re-chunking for context.")
-            text = process_document_from_url(url)
-            return chunk_text(text)
+                f"INFO:     Cache hit for document URL: {url}. Retrieving chunks from DB.")
+            return cached_doc.chunks
     finally:
         db.close()
-
     print(
         f"INFO:     Cache miss for document URL: {url}. Starting full processing...")
     text = process_document_from_url(url)
@@ -96,26 +98,26 @@ def process_document_and_upsert(url: str) -> List[str]:
     embeddings = embedding_model.encode(chunks, show_progress_bar=True)
     vectors = [{"id": f"{doc_id}_chunk_{i}", "values": embeddings[i].tolist(
     ), "metadata": {"text": chunk}} for i, chunk in enumerate(chunks)]
-
     index = PineconeService.get_index()
     print(
         f"INFO:     Upserting {len(vectors)} vectors to Pinecone namespace: {doc_id[:8]}...")
     index.upsert(vectors=vectors, namespace=doc_id)
     print("INFO:     Upsert complete.")
-
     db = SessionLocal()
     try:
-        new_doc_record = ProcessedDocument(id=doc_id, url=url)
+        new_doc_record = ProcessedDocument(id=doc_id, url=url, chunks=chunks)
         db.add(new_doc_record)
         db.commit()
-        print(f"INFO:     Saved document record to cache.")
+        print(f"INFO:     Saved document record and chunks to cache.")
     finally:
         db.close()
-
     return chunks
 
 
 def get_context_for_questions(questions: List[str], url: str, all_chunks: List[str]) -> List[Tuple[str, str]]:
+    """
+    Finds context using hybrid search, retrieving minimal chunks for speed.
+    """
     doc_id = hashlib.sha256(url.encode()).hexdigest()
     embedding_model = EmbeddingModel.get_instance()
     index = PineconeService.get_index()
@@ -126,14 +128,16 @@ def get_context_for_questions(questions: List[str], url: str, all_chunks: List[s
     for question in questions:
         print(f"INFO:     Hybrid search for question: '{question}'")
 
+        # --- THE FIX: Reduce the number of retrieved chunks to the minimum ---
         query_embedding = embedding_model.encode([question]).tolist()
         semantic_results = index.query(
-            vector=query_embedding, top_k=3, include_metadata=True, namespace=doc_id)
+            vector=query_embedding, top_k=1, include_metadata=True, namespace=doc_id)  # Changed to 1
         semantic_chunks = [res['metadata']['text']
                            for res in semantic_results['matches']]
 
         tokenized_query = question.split(" ")
-        keyword_chunks = bm25.get_top_n(tokenized_query, all_chunks, n=3)
+        keyword_chunks = bm25.get_top_n(
+            tokenized_query, all_chunks, n=1)  # Changed to 1
 
         combined_chunks = semantic_chunks + keyword_chunks
         unique_chunks = list(dict.fromkeys(combined_chunks))
@@ -142,6 +146,8 @@ def get_context_for_questions(questions: List[str], url: str, all_chunks: List[s
         qa_contexts.append((question, context))
 
     return qa_contexts
+
+# (generate_answers_in_batch and other helpers remain the same)
 
 
 def generate_answers_in_batch(qa_contexts: List[Tuple[str, str]]) -> List[str]:

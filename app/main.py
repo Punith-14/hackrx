@@ -37,16 +37,22 @@ async def root():
 )
 async def run_query(request: QueryRequest):
     """
-    Orchestrates the full RAG pipeline with caching and hybrid search.
+    Orchestrates the full RAG pipeline with a single, fast API call for all answers.
     """
     try:
+        # Step 1: Process and store the document
         all_chunks = process_document_and_upsert(str(request.documents))
+
+        # Step 2: Retrieve context for all questions
         qa_contexts = get_context_for_questions(
             request.questions,
             str(request.documents),
             all_chunks
         )
+
+        # Step 3: Generate all answers in a single batch call
         final_answers = generate_answers_in_batch(qa_contexts)
+
         return QueryResponse(answers=final_answers)
 
     except Exception as e:

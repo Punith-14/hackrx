@@ -8,24 +8,42 @@ from app.core.services import (
 )
 from app.core.database import init_db
 
+# =============================================================================
+# Application Initialization
+# =============================================================================
+
 app = FastAPI(
     title="HackRx Intelligent Query-Retrieval System",
     description="An advanced RAG system to answer questions from documents.",
     version="1.0.0"
 )
 
+# =============================================================================
+# Application Startup Event
+# =============================================================================
+
 
 @app.on_event("startup")
 async def startup_event():
-    """Load models, initialize services, and create DB tables on startup."""
+    """
+    Initializes all necessary services and database tables
+    when the application starts.
+    """
     init_db()
     EmbeddingModel.get_instance()
     PineconeService.get_instance()
     LLMService.get_instance()
 
+# =============================================================================
+# API Endpoints
+# =============================================================================
+
 
 @app.get("/", tags=["Health Check"])
 async def root():
+    """
+    A simple health check endpoint to confirm the API is running.
+    """
     return {"status": "ok", "message": "API is running!"}
 
 
@@ -37,20 +55,21 @@ async def root():
 )
 async def run_query(request: QueryRequest):
     """
-    Orchestrates the full RAG pipeline with a single, fast API call for all answers.
+    Orchestrates the full RAG pipeline with caching and hybrid search.
+    This is the main entry point for the application's logic.
     """
     try:
-        # Step 1: Process and store the document
+        # Step 1: Process document (uses caching) and get text chunks
         all_chunks = process_document_and_upsert(str(request.documents))
 
-        # Step 2: Retrieve context for all questions
+        # Step 2: Retrieve context for all questions using hybrid search
         qa_contexts = get_context_for_questions(
             request.questions,
             str(request.documents),
             all_chunks
         )
 
-        # Step 3: Generate all answers in a single batch call
+        # Step 3: Generate all answers in a single, efficient batch call
         final_answers = generate_answers_in_batch(qa_contexts)
 
         return QueryResponse(answers=final_answers)

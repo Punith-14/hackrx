@@ -24,6 +24,7 @@ load_dotenv()
 
 
 def process_document_from_url(url: str) -> str:
+    """Downloads a PDF from a URL and extracts all its text."""
     response = requests.get(url, timeout=30)
     response.raise_for_status()
     with fitz.open(stream=response.content, filetype="pdf") as doc:
@@ -31,6 +32,7 @@ def process_document_from_url(url: str) -> str:
 
 
 def chunk_text(text: str) -> List[str]:
+    """Splits a long text into smaller, overlapping chunks."""
     chunks, chunk_size, overlap = [], 1000, 200
     for i in range(0, len(text), chunk_size - overlap):
         chunks.append(text[i:i + chunk_size])
@@ -44,6 +46,7 @@ def process_and_embed_document(
     embedding_model: SentenceTransformer,
     pinecone_index
 ) -> List[str]:
+    """Manages the full document processing pipeline, using pre-loaded models."""
     doc_id = hashlib.sha256(url.encode()).hexdigest()
     db = SessionLocal()
     cached_doc = db.query(ProcessedDocument).filter(
@@ -85,7 +88,7 @@ def retrieve_and_rerank_context(
     pinecone_index,
     cohere_client
 ) -> str:
-    """Performs hybrid search and re-ranks results to get the best context."""
+    """Performs hybrid search and re-ranks results using pre-loaded models."""
     doc_id = hashlib.sha256(url.encode()).hexdigest()
 
     # 1. Hybrid Search
@@ -111,7 +114,7 @@ def retrieve_and_rerank_context(
         top_n=3
     )
 
-    # --- THE FIX: Use the returned index to look up the original text ---
+    # --- THE FIX: Use the 'index' from the result to look up the original text ---
     final_chunks = []
     for res in reranked_results.results:
         # The 'index' in the result points to the position in our original 'candidate_chunks' list
@@ -120,7 +123,7 @@ def retrieve_and_rerank_context(
     if not final_chunks:
         print(
             f"WARN:     Re-ranking returned no valid document chunks for question: '{question}'")
-        return ""  # Return an empty string if no context is found
+        return ""
 
     final_context = " ".join(final_chunks)
     print(f"DEBUG:    Final context character count: {len(final_context)}")

@@ -1,0 +1,24 @@
+# Environment
+# Ignore the virtual environment folder, which contains all the installed libraries.
+venv/
+.venv/
+
+# Secrets
+# CRITICAL: Ignore the .env file to keep your API keys and database URL private.
+.env
+
+# Python cache
+# Ignore Python's temporary cache and compiled files.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE / Editor specific
+# Ignore configuration folders from popular code editors.
+.vscode/
+.idea/
+
+# OS-specific
+# Ignore system files created by macOS.
+.DS_Store
